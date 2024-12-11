@@ -18,6 +18,7 @@ from zigpy.zcl.clusters.measurement import (
     SoilMoisture,
     TemperatureMeasurement,
 )
+from zigpy.zcl.clusters.security import IasZone
 from zigpy.zcl.clusters.smartenergy import Metering
 
 from zhaquirks.tuya import (
@@ -27,6 +28,14 @@ from zhaquirks.tuya import (
     TuyaPowerConfigurationCluster2AAA,
 )
 from zhaquirks.tuya.mcu import DPToAttributeMapping, TuyaMCUCluster, TuyaOnOffNM
+
+
+class TuyaIASFire(IasZone, TuyaLocalCluster):
+    """Tuya local IAS cluster."""
+
+    _CONSTANT_ATTRIBUTES = {
+        IasZone.AttributeDefs.zone_type.id: IasZone.ZoneType.Fire_Sensor
+    }
 
 
 class TuyaRelativeHumidity(RelativeHumidity, TuyaLocalCluster):
@@ -102,6 +111,21 @@ class TuyaQuirkBuilder(QuirkBuilder):
             "current_summ_delivered",
         )
         self.adds(metering_cfg)
+        return self
+
+    def tuya_ias(
+        self,
+        dp_id: int,
+        ias_cfg: TuyaLocalCluster = TuyaIASFire,
+    ) -> QuirkBuilder:
+        """Add a Tuya IAS Configuration."""
+        self.tuya_dp(
+            dp_id,
+            ias_cfg.ep_attribute,
+            IasZone.AttributeDefs.zone_status.name,
+            converter=lambda x: IasZone.ZoneStatus.Alarm_1 if x == 0 else 0,
+        )
+        self.adds(ias_cfg)
         return self
 
     def tuya_onoff(
