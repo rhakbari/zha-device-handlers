@@ -1,4 +1,5 @@
 """Tuya Din Power Meter."""
+
 from zigpy.profiles import zha
 from zigpy.quirks import CustomDevice
 import zigpy.types as t
@@ -252,17 +253,35 @@ class ZemismartPowerMeasurement(LocalDataCluster, ElectricalMeasurement):
         self._update_attribute(self.phase_attributes[phase]["current"], current)
         self._update_attribute(self.phase_attributes[phase]["power"], power)
         if phase == 0:
-            self.endpoint.device.clamp_bus["power"]["a"].listener_event("power_reported", power)
-            self.endpoint.device.clamp_bus["power"]["a"].listener_event("voltage_reported", voltage)
-            self.endpoint.device.clamp_bus["power"]["a"].listener_event("current_reported", current)
+            self.endpoint.device.clamp_bus["power"]["a"].listener_event(
+                "power_reported", power
+            )
+            self.endpoint.device.clamp_bus["power"]["a"].listener_event(
+                "voltage_reported", voltage
+            )
+            self.endpoint.device.clamp_bus["power"]["a"].listener_event(
+                "current_reported", current
+            )
         if phase == 1:
-            self.endpoint.device.clamp_bus["power"]["b"].listener_event("power_reported", power)
-            self.endpoint.device.clamp_bus["power"]["b"].listener_event("voltage_reported", voltage)
-            self.endpoint.device.clamp_bus["power"]["b"].listener_event("current_reported", current)
+            self.endpoint.device.clamp_bus["power"]["b"].listener_event(
+                "power_reported", power
+            )
+            self.endpoint.device.clamp_bus["power"]["b"].listener_event(
+                "voltage_reported", voltage
+            )
+            self.endpoint.device.clamp_bus["power"]["b"].listener_event(
+                "current_reported", current
+            )
         if phase == 2:
-            self.endpoint.device.clamp_bus["power"]["c"].listener_event("power_reported", power)
-            self.endpoint.device.clamp_bus["power"]["c"].listener_event("voltage_reported", voltage)
-            self.endpoint.device.clamp_bus["power"]["c"].listener_event("current_reported", current)
+            self.endpoint.device.clamp_bus["power"]["c"].listener_event(
+                "power_reported", power
+            )
+            self.endpoint.device.clamp_bus["power"]["c"].listener_event(
+                "voltage_reported", voltage
+            )
+            self.endpoint.device.clamp_bus["power"]["c"].listener_event(
+                "current_reported", current
+            )
 
 
 class PowerMeasurement_2Clamp(LocalDataCluster, ElectricalMeasurement):
@@ -300,6 +319,7 @@ class PowerMeasurement_2Clamp(LocalDataCluster, ElectricalMeasurement):
             ElectricalMeasurement.AttributeDefs.rms_current.id, value
         )
 
+
 class PowerA(PowerMeasurement_2Clamp):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -311,10 +331,12 @@ class PowerB(PowerMeasurement_2Clamp):
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["b"].add_listener(self)
 
+
 class PowerC(PowerMeasurement_2Clamp):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["c"].add_listener(self)
+
 
 class ZemismartElectricalMeasurement(TuyaElectricalMeasurement):
     """Custom class for total energy measurement."""
@@ -445,6 +467,7 @@ class HikingPowerMeter(TuyaSwitch):
         }
     }
 
+
 class TuyaZemismartPowerMeter(CustomDevice):
     """Zemismart power meter device."""
 
@@ -526,5 +549,3 @@ class TuyaZemismartPowerMeter(CustomDevice):
             },
         },
     }
-
-    
