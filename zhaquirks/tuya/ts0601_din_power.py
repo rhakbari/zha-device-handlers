@@ -311,6 +311,7 @@ class PowerA(PowerMeasurement_2Clamp):
 
         Args:
             value (float): The reported AC frequency value.
+
         """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.ac_frequency.id, value
@@ -321,6 +322,7 @@ class PowerA(PowerMeasurement_2Clamp):
 
         Args:
             value (float): The reported voltage value.
+
         """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.rms_voltage.id, value
@@ -331,6 +333,7 @@ class PowerA(PowerMeasurement_2Clamp):
 
         Args:
             value (float): The reported power value.
+
         """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.active_power.id, value
@@ -341,6 +344,7 @@ class PowerA(PowerMeasurement_2Clamp):
 
         Args:
             value (float): The reported power factor value.
+
         """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.power_factor.id, value
@@ -351,6 +355,7 @@ class PowerA(PowerMeasurement_2Clamp):
 
         Args:
             value (float): The reported current value.
+
         """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.rms_current.id, value
@@ -379,6 +384,8 @@ class PowerC(PowerMeasurement_2Clamp):
         """Initialize the PowerC class and add a listener to the power clamp bus."""
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["c"].add_listener(self)
+
+
 class ZemismartElectricalMeasurement(TuyaElectricalMeasurement):
     """Custom class for total energy measurement."""
 
