@@ -1,6 +1,6 @@
 """Tuya Din Power Meter."""
-
 from zigpy.profiles import zha
+from zigpy.quirks import CustomDevice
 import zigpy.types as t
 from zigpy.zcl.clusters.general import Basic, Groups, Ota, Scenes, Time
 from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
@@ -35,6 +35,12 @@ HIKING_FREQUENCY_ATTR = 0x0269
 HIKING_POWER_FACTOR_ATTR = 0x026F
 HIKING_TOTAL_REACTIVE_ATTR = 0x026D
 HIKING_REACTIVE_POWER_ATTR = 0x026E
+"""Zemismart Power Meter Attributes"""
+ZEMISMART_TOTAL_ENERGY_ATTR = 0x0201
+ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR = 0x0202
+ZEMISMART_VCP_ATTR = 0x0006
+ZEMISMART_VCP_P2_ATTR = ZEMISMART_VCP_ATTR + 1
+ZEMISMART_VCP_P3_ATTR = ZEMISMART_VCP_ATTR + 2
 
 
 class TuyaManufClusterDinPower(TuyaManufClusterAttributes):
@@ -66,6 +72,8 @@ class TuyaManufClusterDinPower(TuyaManufClusterAttributes):
 
 class TuyaPowerMeasurement(LocalDataCluster, ElectricalMeasurement):
     """Custom class for power, voltage and current measurement."""
+
+    cluster_id = ElectricalMeasurement.cluster_id
 
     POWER_ID = 0x050B
     VOLTAGE_ID = 0x0505
@@ -119,6 +127,7 @@ class TuyaPowerMeasurement(LocalDataCluster, ElectricalMeasurement):
 class TuyaElectricalMeasurement(LocalDataCluster, Metering):
     """Custom class for total energy measurement."""
 
+    cluster_id = Metering.cluster_id
     CURRENT_DELIVERED_ID = 0x0000
     CURRENT_RECEIVED_ID = 0x0001
     POWER_WATT = 0x0000
@@ -175,12 +184,159 @@ class HikingManufClusterDinPower(TuyaManufClusterAttributes):
             self.endpoint.electrical_measurement.power_factor_reported(value / 10)
 
 
+class ZemismartManufCluster(TuyaManufClusterAttributes):
+    """Manufacturer Specific Cluster of the Zemismart SPM series Power Meter devices."""
+
+    attributes = {
+        ZEMISMART_TOTAL_ENERGY_ATTR: ("energy", t.uint32_t, True),
+        ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR: ("reverse_energy", t.uint32_t, True),
+        ZEMISMART_VCP_ATTR: ("vcp_raw", t.data64, True),
+        ZEMISMART_VCP_P2_ATTR: ("vcp_p2_raw", t.data64, True),
+        ZEMISMART_VCP_P3_ATTR: ("vcp_p3_raw", t.data64, True),
+    }
+
+    def _update_attribute(self, attrid, value):
+        super()._update_attribute(attrid, value)
+        if attrid == ZEMISMART_TOTAL_ENERGY_ATTR:
+            self.endpoint.smartenergy_metering.energy_deliver_reported(value)
+        elif attrid == ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR:
+            self.endpoint.smartenergy_metering.energy_receive_reported(value)
+        elif attrid == ZEMISMART_VCP_ATTR:
+            self.endpoint.electrical_measurement.vcp_reported(value, 0)
+        elif attrid == ZEMISMART_VCP_P2_ATTR:
+            self.endpoint.electrical_measurement.vcp_reported(value, 1)
+        elif attrid == ZEMISMART_VCP_P3_ATTR:
+            self.endpoint.electrical_measurement.vcp_reported(value, 2)
+
+
+class ZemismartPowerMeasurement(LocalDataCluster, ElectricalMeasurement):
+    """Custom class for power, voltage and current measurement."""
+
+    """Setting unit of measurement."""
+    _CONSTANT_ATTRIBUTES = {
+        ElectricalMeasurement.AttributeDefs.ac_voltage_multiplier.id: 1,
+        ElectricalMeasurement.AttributeDefs.ac_voltage_divisor.id: 10,
+        ElectricalMeasurement.AttributeDefs.ac_current_multiplier.id: 1,
+        ElectricalMeasurement.AttributeDefs.ac_current_divisor.id: 1000,
+    }
+
+    phase_attributes = [
+        {  # Phase 1 (X)
+            "voltage": ElectricalMeasurement.AttributeDefs.rms_voltage.id,
+            "current": ElectricalMeasurement.AttributeDefs.rms_current.id,
+            "power": ElectricalMeasurement.AttributeDefs.active_power.id,
+        },
+        {  # Phase 2 (Y)
+            "voltage": ElectricalMeasurement.AttributeDefs.rms_voltage_ph_b.id,
+            "current": ElectricalMeasurement.AttributeDefs.rms_current_ph_b.id,
+            "power": ElectricalMeasurement.AttributeDefs.active_power_ph_b.id,
+        },
+        {  # Phase 3 (Z)
+            "voltage": ElectricalMeasurement.AttributeDefs.rms_voltage_ph_c.id,
+            "current": ElectricalMeasurement.AttributeDefs.rms_current_ph_c.id,
+            "power": ElectricalMeasurement.AttributeDefs.active_power_ph_c.id,
+        },
+    ]
+
+    # Voltage, current, power is delivered in one value
+    def vcp_reported(self, value, phase=0):
+        """Voltage, current, power reported."""
+        if phase < 0 or phase > 2:
+            raise ValueError("Invalid phase. Phase must be 0, 1, or 2.")
+
+        voltage = int.from_bytes(value[6:8], byteorder="little")
+        current = int.from_bytes(value[3:6], byteorder="little")
+        power = int.from_bytes(value[0:3], byteorder="little")
+
+        self._update_attribute(self.phase_attributes[phase]["voltage"], voltage)
+        self._update_attribute(self.phase_attributes[phase]["current"], current)
+        self._update_attribute(self.phase_attributes[phase]["power"], power)
+        if phase == 0:
+            self.endpoint.device.clamp_bus["power"]["a"].listener_event("power_reported", power)
+            self.endpoint.device.clamp_bus["power"]["a"].listener_event("voltage_reported", voltage)
+            self.endpoint.device.clamp_bus["power"]["a"].listener_event("current_reported", current)
+        if phase == 1:
+            self.endpoint.device.clamp_bus["power"]["b"].listener_event("power_reported", power)
+            self.endpoint.device.clamp_bus["power"]["b"].listener_event("voltage_reported", voltage)
+            self.endpoint.device.clamp_bus["power"]["b"].listener_event("current_reported", current)
+        if phase == 2:
+            self.endpoint.device.clamp_bus["power"]["c"].listener_event("power_reported", power)
+            self.endpoint.device.clamp_bus["power"]["c"].listener_event("voltage_reported", voltage)
+            self.endpoint.device.clamp_bus["power"]["c"].listener_event("current_reported", current)
+
+
+class PowerMeasurement_2Clamp(LocalDataCluster, ElectricalMeasurement):
+    """Custom class for power, voltage and current measurement."""
+
+    # use constants from zigpy/zcl/clusters/homeautomation.py
+    cluster_id = ElectricalMeasurement.cluster_id
+    _CONSTANT_ATTRIBUTES = {
+        ElectricalMeasurement.AttributeDefs.ac_current_divisor.id: 1000,
+        ElectricalMeasurement.AttributeDefs.ac_voltage_divisor.id: 10,
+    }
+
+    def ac_frequency_reported(self, value):
+        self._update_attribute(
+            ElectricalMeasurement.AttributeDefs.ac_frequency.id, value
+        )
+
+    def voltage_reported(self, value):
+        self._update_attribute(
+            ElectricalMeasurement.AttributeDefs.rms_voltage.id, value
+        )
+
+    def power_reported(self, value):
+        self._update_attribute(
+            ElectricalMeasurement.AttributeDefs.active_power.id, value
+        )
+
+    def power_factor_reported(self, value):
+        self._update_attribute(
+            ElectricalMeasurement.AttributeDefs.power_factor.id, value
+        )
+
+    def current_reported(self, value):
+        self._update_attribute(
+            ElectricalMeasurement.AttributeDefs.rms_current.id, value
+        )
+
+class PowerA(PowerMeasurement_2Clamp):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.endpoint.device.clamp_bus["power"]["a"].add_listener(self)
+
+
+class PowerB(PowerMeasurement_2Clamp):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.endpoint.device.clamp_bus["power"]["b"].add_listener(self)
+
+class PowerC(PowerMeasurement_2Clamp):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.endpoint.device.clamp_bus["power"]["c"].add_listener(self)
+
+class ZemismartElectricalMeasurement(TuyaElectricalMeasurement):
+    """Custom class for total energy measurement."""
+
+    """Setting unit of measurement."""
+    _CONSTANT_ATTRIBUTES = {
+        Metering.AttributeDefs.unit_of_measure.id: 0,  # kWh
+        Metering.AttributeDefs.divisor.id: 100,
+    }
+
+
 class TuyaPowerMeter(TuyaSwitch):
     """Tuya power meter device."""
 
     def __init__(self, *args, **kwargs):
         """Init device."""
         self.switch_bus = Bus()
+        self.clamp_bus = {}
+        for i in ["power", "energy"]:
+            self.clamp_bus[i] = {}
+            for j in ["abc", "a", "b", "c"]:
+                self.clamp_bus[i][j] = Bus()
         super().__init__(*args, **kwargs)
 
     signature = {
@@ -288,3 +444,87 @@ class HikingPowerMeter(TuyaSwitch):
             },
         }
     }
+
+class TuyaZemismartPowerMeter(CustomDevice):
+    """Zemismart power meter device."""
+
+    def __init__(self, *args, **kwargs):
+        """Initialize the device."""
+        self.switch_bus = Bus()
+        self.clamp_bus = {
+            "power": {"abc": Bus(), "a": Bus(), "b": Bus(), "c": Bus()},
+            "energy": {"abc": Bus(), "a": Bus(), "b": Bus(), "c": Bus()},
+        }
+        super().__init__(*args, **kwargs)
+
+    signature = {
+        MODELS_INFO: [
+            ("_TZE200_v9hkz2yn", "TS0601"),  # SPM02
+        ],
+        ENDPOINTS: {
+            1: {
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.SMART_PLUG,
+                INPUT_CLUSTERS: [
+                    Basic.cluster_id,
+                    Groups.cluster_id,
+                    Scenes.cluster_id,
+                    TuyaManufClusterAttributes.cluster_id,
+                ],
+                OUTPUT_CLUSTERS: [
+                    Time.cluster_id,
+                    Ota.cluster_id,
+                ],
+            },
+        },
+    }
+
+    replacement = {
+        ENDPOINTS: {
+            1: {
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.SMART_PLUG,
+                INPUT_CLUSTERS: [
+                    Basic.cluster_id,
+                    Groups.cluster_id,
+                    Scenes.cluster_id,
+                    ZemismartManufCluster,
+                    ZemismartElectricalMeasurement,
+                    ZemismartPowerMeasurement,
+                ],
+                OUTPUT_CLUSTERS: [
+                    Time.cluster_id,
+                    Ota.cluster_id,
+                ],
+            },
+            10: {
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.METER_INTERFACE,
+                INPUT_CLUSTERS: [
+                    # Uncomment EnergyA if required
+                    PowerA,
+                ],
+                OUTPUT_CLUSTERS: [],
+            },
+            20: {
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.METER_INTERFACE,
+                INPUT_CLUSTERS: [
+                    # Uncomment EnergyB if required
+                    PowerB,
+                ],
+                OUTPUT_CLUSTERS: [],
+            },
+            30: {
+                PROFILE_ID: zha.PROFILE_ID,
+                DEVICE_TYPE: zha.DeviceType.METER_INTERFACE,
+                INPUT_CLUSTERS: [
+                    # Uncomment EnergyC if required
+                    PowerC,
+                ],
+                OUTPUT_CLUSTERS: [],
+            },
+        },
+    }
+
+    
