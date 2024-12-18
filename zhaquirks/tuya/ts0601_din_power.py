@@ -294,46 +294,99 @@ class PowerMeasurement_2Clamp(LocalDataCluster, ElectricalMeasurement):
         ElectricalMeasurement.AttributeDefs.ac_voltage_divisor.id: 10,
     }
 
+class PowerA(PowerMeasurement_2Clamp):
+    """
+    PowerA class that handles power measurements for phase A.
+    Inherits from PowerMeasurement_2Clamp.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initializes the PowerA class and adds a listener to the power clamp bus.
+        """
+        super().__init__(*args, **kwargs)
+        self.endpoint.device.clamp_bus["power"]["a"].add_listener(self)
+
     def ac_frequency_reported(self, value):
+        """
+        Callback method to handle reported AC frequency.
+        
+        Args:
+            value (float): The reported AC frequency value.
+        """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.ac_frequency.id, value
         )
 
     def voltage_reported(self, value):
+        """
+        Callback method to handle reported voltage.
+
+        Args:
+            value (float): The reported voltage value.
+        """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.rms_voltage.id, value
         )
 
     def power_reported(self, value):
+        """
+        Callback method to handle reported power.
+
+        Args:
+            value (float): The reported power value.
+        """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.active_power.id, value
         )
 
     def power_factor_reported(self, value):
+        """
+        Callback method to handle reported power factor.
+
+        Args:
+            value (float): The reported power factor value.
+        """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.power_factor.id, value
         )
 
     def current_reported(self, value):
+        """
+        Callback method to handle reported current.
+
+        Args:
+            value (float): The reported current value.
+        """
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.rms_current.id, value
         )
 
 
-class PowerA(PowerMeasurement_2Clamp):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.endpoint.device.clamp_bus["power"]["a"].add_listener(self)
-
-
 class PowerB(PowerMeasurement_2Clamp):
+    """
+    PowerB class that handles power measurements for phase B.
+    Inherits from PowerMeasurement_2Clamp.
+    """
+
     def __init__(self, *args, **kwargs):
+        """
+        Initializes the PowerB class and adds a listener to the power clamp bus.
+        """
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["b"].add_listener(self)
 
 
 class PowerC(PowerMeasurement_2Clamp):
+    """
+    PowerC class that handles power measurements for phase C.
+    Inherits from PowerMeasurement_2Clamp.
+    """
+
     def __init__(self, *args, **kwargs):
+        """
+        Initializes the PowerC class and adds a listener to the power clamp bus.
+        """
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["c"].add_listener(self)
 
