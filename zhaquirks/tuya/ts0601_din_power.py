@@ -306,7 +306,8 @@ class PowerA(PowerMeasurement_2Clamp):
         self.endpoint.device.clamp_bus["power"]["a"].add_listener(self)
 
     def ac_frequency_reported(self, value):
-        """Callback method to handle reported AC frequency.
+        """
+        Callback method to handle reported AC frequency.
 
         Args:
             value (float): The reported AC frequency value.
