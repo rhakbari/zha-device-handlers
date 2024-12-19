@@ -7,7 +7,6 @@ import importlib
 import json
 from pathlib import Path
 from unittest import mock
-from unittest.mock import Mock
 
 import pytest
 from zigpy import zcl
@@ -19,8 +18,6 @@ from zigpy.quirks import CustomDevice
 from zigpy.quirks.v2 import QuirkBuilder
 import zigpy.types
 from zigpy.zcl import foundation
-from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
-from zigpy.zcl.clusters.smartenergy import Metering
 import zigpy.zdo.types
 
 import zhaquirks
