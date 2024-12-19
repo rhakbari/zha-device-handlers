@@ -56,6 +56,18 @@ import zhaquirks.konke
 import zhaquirks.philips
 from zhaquirks.xiaomi import XIAOMI_NODE_DESC
 import zhaquirks.xiaomi.aqara.vibration_aq1
+from unittest.mock import Mock, patch
+from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
+from zigpy.zcl.clusters.smartenergy import Metering
+from zhaquirks.tuya.zemismart import (
+    ZemismartManufCluster,
+    ZemismartPowerMeasurement,
+    PowerMeasurement_2Clamp,
+    PowerA,
+    PowerB,
+    PowerC,
+    ZemismartElectricalMeasurement,
+)
 
 zhaquirks.setup()
 
@@ -880,3 +892,120 @@ async def test_local_data_cluster(zigpy_device_from_v2_quirk) -> None:
         {2: None},
         {},
     )
+
+
+@pytest.fixture
+def mock_endpoint():
+    """Mock endpoint fixture."""
+    endpoint = Mock()
+    endpoint.device.clamp_bus = {
+        "power": {
+            "a": Mock(),
+            "b": Mock(),
+            "c": Mock()
+        }
+    }
+    return endpoint
+
+def test_zemismart_manuf_cluster_attribute_updates():
+    """Test ZemismartManufCluster attribute updates."""
+    cluster = ZemismartManufCluster(Mock())
+    
+    # Test energy delivery update
+    cluster._update_attribute("energy", 1000)
+    cluster.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_once_with(1000)
+    
+    # Test reverse energy update
+    cluster._update_attribute("reverse_energy", 500)
+    cluster.endpoint.smartenergy_metering.energy_receive_reported.assert_called_once_with(500)
+    
+    # Test VCP updates for each phase
+    test_vcp_data = bytes([1, 2, 3, 4, 5, 6, 7, 8])
+    cluster._update_attribute("vcp_raw", test_vcp_data)
+    cluster.endpoint.electrical_measurement.vcp_reported.assert_called_with(test_vcp_data, 0)
+    
+    cluster._update_attribute("vcp_p2_raw", test_vcp_data)
+    cluster.endpoint.electrical_measurement.vcp_reported.assert_called_with(test_vcp_data, 1)
+    
+    cluster._update_attribute("vcp_p3_raw", test_vcp_data)
+    cluster.endpoint.electrical_measurement.vcp_reported.assert_called_with(test_vcp_data, 2)
+
+def test_zemismart_power_measurement():
+    """Test ZemismartPowerMeasurement cluster."""
+    cluster = ZemismartPowerMeasurement(Mock())
+    
+    # Test constant attributes
+    assert cluster._CONSTANT_ATTRIBUTES[ElectricalMeasurement.AttributeDefs.ac_voltage_multiplier.id] == 1
+    assert cluster._CONSTANT_ATTRIBUTES[ElectricalMeasurement.AttributeDefs.ac_voltage_divisor.id] == 10
+    assert cluster._CONSTANT_ATTRIBUTES[ElectricalMeasurement.AttributeDefs.ac_current_multiplier.id] == 1
+    assert cluster._CONSTANT_ATTRIBUTES[ElectricalMeasurement.AttributeDefs.ac_current_divisor.id] == 1000
+
+    # Test VCP reporting for each phase
+    test_vcp_data = bytes([
+        0x64, 0x00, 0x00,  # Power: 100
+        0xFA, 0x00, 0x00,  # Current: 250
+        0xDC, 0x05,        # Voltage: 1500
+    ])
+    
+    # Test Phase 1
+    cluster.vcp_reported(test_vcp_data, 0)
+    assert cluster._update_attribute.call_args_list[0][0] == (
+        cluster.phase_attributes[0]["voltage"], 
+        1500
+    )
+    
+    # Test invalid phase
+    with pytest.raises(ValueError):
+        cluster.vcp_reported(test_vcp_data, 3)
+
+def test_power_measurement_2clamp():
+    """Test PowerMeasurement_2Clamp base class."""
+    cluster = PowerMeasurement_2Clamp(Mock())
+    
+    assert cluster.cluster_id == ElectricalMeasurement.cluster_id
+    assert cluster._CONSTANT_ATTRIBUTES[ElectricalMeasurement.AttributeDefs.ac_current_divisor.id] == 1000
+    assert cluster._CONSTANT_ATTRIBUTES[ElectricalMeasurement.AttributeDefs.ac_voltage_divisor.id] == 10
+
+@pytest.mark.parametrize("PowerClass,phase", [
+    (PowerA, "a"),
+    (PowerB, "b"),
+    (PowerC, "c")
+])
+def test_power_phase_classes(PowerClass, phase, mock_endpoint):
+    """Test power measurement classes for each phase."""
+    cluster = PowerClass(mock_endpoint)
+    
+    # Verify bus listener registration
+    mock_endpoint.device.clamp_bus["power"][phase].add_listener.assert_called_once_with(cluster)
+    
+    if PowerClass == PowerA:
+        # Test additional methods only present in PowerA
+        cluster.ac_frequency_reported(50)
+        cluster._update_attribute.assert_called_with(
+            ElectricalMeasurement.AttributeDefs.ac_frequency.id, 
+            50
+        )
+        
+        cluster.power_factor_reported(95)
+        cluster._update_attribute.assert_called_with(
+            ElectricalMeasurement.AttributeDefs.power_factor.id,
+            95
+        )
+    
+    # Test common methods
+    cluster.voltage_reported(230)
+    if phase == "a":
+        attr_id = ElectricalMeasurement.AttributeDefs.rms_voltage.id
+    elif phase == "b":
+        attr_id = ElectricalMeasurement.AttributeDefs.rms_voltage_ph_b.id
+    else:
+        attr_id = ElectricalMeasurement.AttributeDefs.rms_voltage_ph_c.id
+    cluster._update_attribute.assert_called_with(attr_id, 230)
+
+def test_zemismart_electrical_measurement():
+    """Test ZemismartElectricalMeasurement cluster."""
+    cluster = ZemismartElectricalMeasurement(Mock())
+    
+    # Verify constant attributes
+    assert cluster._CONSTANT_ATTRIBUTES[Metering.AttributeDefs.unit_of_measure.id] == 0  # kWh
+    assert cluster._CONSTANT_ATTRIBUTES[Metering.AttributeDefs.divisor.id] == 100
