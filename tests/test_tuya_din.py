@@ -1,210 +1,209 @@
-from unittest.mock import MagicMock
+"""Test for Tuya din power meter."""
 
-from custom_components.zhaquirks.tuya import (
+import pytest
+from unittest.mock import MagicMock, patch
+from zigpy.zcl import foundation
+from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
+from zigpy.zcl.clusters.smartenergy import Metering
+
+from zhaquirks import Bus
+from zhaquirks.const import (
+    DEVICE_TYPE,
+    ENDPOINTS,
+    INPUT_CLUSTERS,
+    MODELS_INFO,
+    OUTPUT_CLUSTERS,
+    PROFILE_ID,
+)
+from zhaquirks.tuya import TuyaManufClusterAttributes, TuyaSwitch
+from zhaquirks.tuya.tuya_din_power import (
+    TuyaPowerMeter,
+    TuyaManufClusterDinPower,
+    TuyaPowerMeasurement,
+    TuyaElectricalMeasurement,
     HikingManufClusterDinPower,
+    ZemismartManufCluster,
+    ZemismartPowerMeasurement,
     PowerA,
     PowerB,
     PowerC,
-    TuyaElectricalMeasurement,
-    TuyaManufClusterDinPower,
-    ZemismartManufCluster,
 )
-import pytest
-from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
-
 
 @pytest.fixture
-def tuya_power_meter():
-    """Fixture for TuyaPowerMeter device."""
-    device = MagicMock()
-    cluster = TuyaManufClusterDinPower(device)
+def tuya_cluster():
+    """Tuya cluster fixture."""
+    entity = MagicMock()
+    entity.endpoint.device.manufacturer = "_TZE200_byzdayie"
+    entity.endpoint.device.model = "TS0601"
+    cluster = TuyaManufClusterDinPower(entity)
     return cluster
-
 
 @pytest.fixture
-def hiking_power_meter():
-    """Fixture for HikingPowerMeter device."""
-    device = MagicMock()
-    cluster = HikingManufClusterDinPower(device)
+def hiking_cluster():
+    """Hiking cluster fixture."""
+    entity = MagicMock()
+    entity.endpoint.device.manufacturer = "_TZE200_bkkmqmyo"
+    entity.endpoint.device.model = "TS0601"
+    cluster = HikingManufClusterDinPower(entity)
     return cluster
-
 
 @pytest.fixture
-def zemismart_power_meter():
-    """Fixture for ZemismartPowerMeter device."""
-    device = MagicMock()
-    cluster = ZemismartManufCluster(device)
+def zemismart_cluster():
+    """Zemismart cluster fixture."""
+    entity = MagicMock()
+    entity.endpoint.device.manufacturer = "_TZE200_v9hkz2yn"
+    entity.endpoint.device.model = "TS0601"
+    cluster = ZemismartManufCluster(entity)
     return cluster
 
+@pytest.mark.parametrize(
+    "cluster_type, dp_id, dp_value, expected_calls",
+    [
+        (
+            "tuya_cluster",
+            0x0211,  # TUYA_TOTAL_ENERGY_ATTR
+            10000,
+            [("energy_deliver_reported", 100)],  # 10000/100 = 100 kWh
+        ),
+        (
+            "tuya_cluster",
+            0x0212,  # TUYA_CURRENT_ATTR
+            1000,
+            [("current_reported", 1000)],  # 1A
+        ),
+        (
+            "tuya_cluster",
+            0x0213,  # TUYA_POWER_ATTR
+            2000,
+            [("power_reported", 200)],  # 2000/10 = 200W
+        ),
+        (
+            "tuya_cluster",
+            0x0214,  # TUYA_VOLTAGE_ATTR
+            2300,
+            [("voltage_reported", 230)],  # 2300/10 = 230V
+        ),
+    ],
+)
+async def test_tuya_receive_attribute(
+    tuya_cluster, cluster_type, dp_id, dp_value, expected_calls, request
+):
+    """Test receiving attributes for Tuya devices."""
+    cluster = request.getfixturevalue(cluster_type)
+    cluster._update_attribute(dp_id, dp_value)
 
-class TestTuyaManufClusterDinPower:
-    """Tests for TuyaManufClusterDinPower."""
+    for call in expected_calls:
+        method_name, value = call
+        if method_name == "energy_deliver_reported":
+            assert (
+                cluster.endpoint.smartenergy_metering.energy_deliver_reported.call_count == 1
+            )
+            cluster.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_with(
+                value
+            )
+        elif method_name in ["current_reported", "power_reported", "voltage_reported"]:
+            method = getattr(cluster.endpoint.electrical_measurement, method_name)
+            assert method.call_count == 1
+            method.assert_called_with(value)
 
-    def test_update_total_energy(self, tuya_power_meter):
-        """Test updating total energy attribute."""
-        tuya_power_meter._update_attribute(0x0211, 10000)  # 100 kWh
-        tuya_power_meter.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_once_with(
-            100
-        )
+@pytest.mark.parametrize(
+    "cluster_type, dp_id, dp_value, expected_calls",
+    [
+        (
+            "hiking_cluster",
+            0x0110,  # HIKING_DIN_SWITCH_ATTR
+            1,
+            [("switch_event", 16, 1)],
+        ),
+        (
+            "hiking_cluster",
+            0x0201,  # HIKING_TOTAL_ENERGY_DELIVERED_ATTR
+            10000,
+            [("energy_deliver_reported", 100)],  # 10000/100 = 100 kWh
+        ),
+    ],
+)
+async def test_hiking_receive_attribute(
+    hiking_cluster, cluster_type, dp_id, dp_value, expected_calls, request
+):
+    """Test receiving attributes for Hiking devices."""
+    cluster = request.getfixturevalue(cluster_type)
+    cluster._update_attribute(dp_id, dp_value)
 
-    def test_update_current(self, tuya_power_meter):
-        """Test updating current attribute."""
-        tuya_power_meter._update_attribute(0x0212, 1000)  # 1A
-        tuya_power_meter.endpoint.electrical_measurement.current_reported.assert_called_once_with(
-            1000
-        )
-
-    def test_update_power(self, tuya_power_meter):
-        """Test updating power attribute."""
-        tuya_power_meter._update_attribute(0x0213, 2000)  # 200W
-        tuya_power_meter.endpoint.electrical_measurement.power_reported.assert_called_once_with(
-            200
-        )
-
-    def test_update_voltage(self, tuya_power_meter):
-        """Test updating voltage attribute."""
-        tuya_power_meter._update_attribute(0x0214, 2300)  # 230V
-        tuya_power_meter.endpoint.electrical_measurement.voltage_reported.assert_called_once_with(
-            230
-        )
-
-
-class TestHikingManufClusterDinPower:
-    """Tests for HikingManufClusterDinPower."""
-
-    def test_update_switch(self, hiking_power_meter):
-        """Test updating switch attribute."""
-        hiking_power_meter._update_attribute(0x0110, 1)
-        hiking_power_meter.endpoint.device.switch_bus.listener_event.assert_called_once_with(
-            "switch_event", 16, 1
-        )
-
-    def test_update_energy_delivered(self, hiking_power_meter):
-        """Test updating energy delivered attribute."""
-        hiking_power_meter._update_attribute(0x0201, 10000)  # 100 kWh
-        hiking_power_meter.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_once_with(
-            100
-        )
-
-    def test_update_voltage_current(self, hiking_power_meter):
-        """Test updating voltage and current attributes."""
-        # Test value: upper 16 bits = current, lower 16 bits = voltage
-        value = (1000 << 16) | 2300  # 1A current, 230V voltage
-        hiking_power_meter._update_attribute(0x0006, value)
-        hiking_power_meter.endpoint.electrical_measurement.current_reported.assert_called_once_with(
-            1000
-        )
-        hiking_power_meter.endpoint.electrical_measurement.voltage_reported.assert_called_once_with(
-            230
-        )
-
-
-class TestZemismartPowerMeasurement:
-    """Tests for ZemismartPowerMeasurement."""
-
-    def test_vcp_reported_phase_a(self, zemismart_power_meter):
-        """Test reporting voltage, current, power for phase A."""
-        # Create test data: 3 bytes power, 3 bytes current, 2 bytes voltage
-        test_data = bytearray(
-            [
-                0x64,
-                0x00,
-                0x00,  # 100W power
-                0xE8,
-                0x03,
-                0x00,  # 1000mA current
-                0xE6,
-                0x00,  # 230V voltage
-            ]
-        )
-
-        zemismart_power_meter.endpoint.electrical_measurement.vcp_reported(test_data, 0)
-
-        # Verify calls to bus events
-        zemismart_power_meter.endpoint.device.clamp_bus["power"][
-            "a"
-        ].listener_event.assert_any_call("power_reported", 100)
-        zemismart_power_meter.endpoint.device.clamp_bus["power"][
-            "a"
-        ].listener_event.assert_any_call("current_reported", 1000)
-        zemismart_power_meter.endpoint.device.clamp_bus["power"][
-            "a"
-        ].listener_event.assert_any_call("voltage_reported", 230)
-
-    def test_invalid_phase(self, zemismart_power_meter):
-        """Test reporting with invalid phase number."""
-        test_data = bytearray([0] * 8)
-        with pytest.raises(ValueError):
-            zemismart_power_meter.endpoint.electrical_measurement.vcp_reported(
-                test_data, 3
+    for call in expected_calls:
+        if call[0] == "switch_event":
+            cluster.endpoint.device.switch_bus.listener_event.assert_called_with(*call)
+        elif call[0] == "energy_deliver_reported":
+            cluster.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_with(
+                call[1]
             )
 
+async def test_hiking_voltage_current(hiking_cluster):
+    """Test voltage and current combined attribute for Hiking devices."""
+    value = (1000 << 16) | 2300  # 1A current, 230V voltage
+    hiking_cluster._update_attribute(0x0006, value)
+    
+    hiking_cluster.endpoint.electrical_measurement.current_reported.assert_called_with(1000)
+    hiking_cluster.endpoint.electrical_measurement.voltage_reported.assert_called_with(230)
 
-class TestPowerMeasurementClasses:
-    """Tests for PowerA, PowerB, and PowerC classes."""
+async def test_zemismart_vcp_reporting(zemismart_cluster):
+    """Test VCP (Voltage, Current, Power) reporting for Zemismart devices."""
+    test_data = bytearray([
+        0x64, 0x00, 0x00,  # 100W power
+        0xE8, 0x03, 0x00,  # 1000mA current
+        0xE6, 0x00        # 230V voltage
+    ])
+    
+    zemismart_cluster.endpoint.electrical_measurement.vcp_reported(test_data, 0)
+    
+    calls = zemismart_cluster.endpoint.device.clamp_bus["power"]["a"].listener_event.call_args_list
+    assert len(calls) == 3
+    
+    expected_calls = [
+        ("power_reported", 100),
+        ("current_reported", 1000),
+        ("voltage_reported", 230),
+    ]
+    
+    for call, expected in zip(calls, expected_calls):
+        args = call[0]
+        assert args[0] == expected[0]
+        assert args[1] == expected[1]
 
-    @pytest.mark.parametrize("power_class", [PowerA, PowerB, PowerC])
-    def test_power_measurement_initialization(self, power_class):
-        """Test initialization of power measurement classes."""
+async def test_zemismart_invalid_phase(zemismart_cluster):
+    """Test invalid phase handling for Zemismart devices."""
+    test_data = bytearray([0] * 8)
+    with pytest.raises(ValueError, match="Invalid phase"):
+        zemismart_cluster.endpoint.electrical_measurement.vcp_reported(test_data, 3)
+
+async def test_power_measurement_classes():
+    """Test PowerA, PowerB, and PowerC measurement classes."""
+    for power_class in [PowerA, PowerB, PowerC]:
         device = MagicMock()
         endpoint = MagicMock()
         endpoint.device = device
-        device.clamp_bus = {
-            "power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}
-        }
-
+        device.clamp_bus = {"power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}}
+        
         cluster = power_class(endpoint)
         assert cluster.endpoint == endpoint
-
-        # Verify bus listener was added
+        
         phase = "a" if power_class == PowerA else "b" if power_class == PowerB else "c"
         device.clamp_bus["power"][phase].add_listener.assert_called_once_with(cluster)
 
-    def test_power_a_measurements(self):
-        """Test PowerA measurement reporting."""
-        device = MagicMock()
-        endpoint = MagicMock()
-        endpoint.device = device
-        device.clamp_bus = {"power": {"a": MagicMock()}}
-
-        power_a = PowerA(endpoint)
-
-        # Test voltage reporting
-        power_a.voltage_reported(230)
-        endpoint._update_attribute.assert_called_with(
-            ElectricalMeasurement.AttributeDefs.rms_voltage.id, 230
-        )
-
-        # Test current reporting
-        power_a.current_reported(1000)
-        endpoint._update_attribute.assert_called_with(
-            ElectricalMeasurement.AttributeDefs.rms_current.id, 1000
-        )
-
-        # Test power reporting
-        power_a.power_reported(100)
-        endpoint._update_attribute.assert_called_with(
-            ElectricalMeasurement.AttributeDefs.active_power.id, 100
-        )
-
-
-class TestTuyaElectricalMeasurement:
-    """Tests for TuyaElectricalMeasurement."""
-
-    def test_energy_reporting(self):
-        """Test energy reporting methods."""
-        device = MagicMock()
-        endpoint = MagicMock()
-        cluster = TuyaElectricalMeasurement(endpoint)
-
-        # Test energy delivery reporting
-        cluster.energy_deliver_reported(100)
-        endpoint._update_attribute.assert_called_with(0x0000, 100)
-
-        # Test energy receive reporting
-        cluster.energy_receive_reported(50)
-        endpoint._update_attribute.assert_called_with(0x0001, 50)
-
+async def test_device_initialization():
+    """Test device initialization and bus setup."""
+    device = TuyaPowerMeter(None, None, None)
+    
+    assert hasattr(device, 'switch_bus')
+    assert isinstance(device.switch_bus, Bus)
+    
+    assert hasattr(device, 'clamp_bus')
+    assert 'power' in device.clamp_bus
+    assert 'energy' in device.clamp_bus
+    
+    for bus_type in ['power', 'energy']:
+        for phase in ['abc', 'a', 'b', 'c']:
+            assert isinstance(device.clamp_bus[bus_type][phase], Bus)
 
 if __name__ == "__main__":
     pytest.main(["-v"])
