@@ -1,33 +1,21 @@
 """Test for Tuya din power meter."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
-from zigpy.zcl import foundation
-from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
-from zigpy.zcl.clusters.smartenergy import Metering
 
 from zhaquirks import Bus
-from zhaquirks.const import (
-    DEVICE_TYPE,
-    ENDPOINTS,
-    INPUT_CLUSTERS,
-    MODELS_INFO,
-    OUTPUT_CLUSTERS,
-    PROFILE_ID,
-)
-from zhaquirks.tuya import TuyaManufClusterAttributes, TuyaSwitch
 from zhaquirks.tuya.ts0601_din_power import (  # Updated import path
-    TuyaPowerMeter,
-    TuyaManufClusterDinPower,
-    TuyaPowerMeasurement,
-    TuyaElectricalMeasurement,
     HikingManufClusterDinPower,
-    ZemismartManufCluster,
-    ZemismartPowerMeasurement,
     PowerA,
     PowerB,
     PowerC,
+    TuyaManufClusterDinPower,
+    TuyaPowerMeter,
+    ZemismartManufCluster,
+    ZemismartPowerMeasurement,
 )
+
 
 @pytest.fixture
 def tuya_cluster():
@@ -38,6 +26,7 @@ def tuya_cluster():
     cluster = TuyaManufClusterDinPower(entity)
     return cluster
 
+
 @pytest.fixture
 def hiking_cluster():
     """Hiking cluster fixture."""
@@ -47,6 +36,7 @@ def hiking_cluster():
     cluster = HikingManufClusterDinPower(entity)
     return cluster
 
+
 @pytest.fixture
 def zemismart_cluster():
     """Zemismart cluster fixture."""
@@ -55,14 +45,11 @@ def zemismart_cluster():
     entity.endpoint.device.model = "TS0601"
     entity.endpoint.electrical_measurement = MagicMock()
     entity.endpoint.device.clamp_bus = {
-        "power": {
-            "a": MagicMock(),
-            "b": MagicMock(),
-            "c": MagicMock()
-        }
+        "power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}
     }
     cluster = ZemismartManufCluster(entity)
     return cluster
+
 
 @pytest.mark.parametrize(
     "cluster_type, dp_id, dp_value, expected_calls",
@@ -104,7 +91,8 @@ async def test_tuya_receive_attribute(
         method_name, value = call
         if method_name == "energy_deliver_reported":
             assert (
-                cluster.endpoint.smartenergy_metering.energy_deliver_reported.call_count == 1
+                cluster.endpoint.smartenergy_metering.energy_deliver_reported.call_count
+                == 1
             )
             cluster.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_with(
                 value
@@ -114,13 +102,19 @@ async def test_tuya_receive_attribute(
             assert method.call_count == 1
             method.assert_called_with(value)
 
+
 async def test_hiking_voltage_current(hiking_cluster):
     """Test voltage and current combined attribute for Hiking devices."""
     value = (1000 << 16) | 2300  # 1A current, 230V voltage
     hiking_cluster._update_attribute(0x0006, value)
-    
-    hiking_cluster.endpoint.electrical_measurement.current_reported.assert_called_with(1000)
-    hiking_cluster.endpoint.electrical_measurement.voltage_reported.assert_called_with(230)
+
+    hiking_cluster.endpoint.electrical_measurement.current_reported.assert_called_with(
+        1000
+    )
+    hiking_cluster.endpoint.electrical_measurement.voltage_reported.assert_called_with(
+        230
+    )
+
 
 @pytest.fixture
 def zemismart_power_measurement():
@@ -128,48 +122,54 @@ def zemismart_power_measurement():
     endpoint = MagicMock()
     endpoint.device = MagicMock()
     endpoint.device.clamp_bus = {
-        "power": {
-            "a": MagicMock(),
-            "b": MagicMock(),
-            "c": MagicMock()
-        }
+        "power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}
     }
     return ZemismartPowerMeasurement(endpoint)
 
+
 async def test_zemismart_vcp_reporting(zemismart_power_measurement):
     """Test VCP (Voltage, Current, Power) reporting for Zemismart devices."""
-    test_data = bytearray([
-        0x64, 0x00, 0x00,  # 100W power
-        0xE8, 0x03, 0x00,  # 1000mA current
-        0xE6, 0x00        # 230V voltage
-    ])
-    
+    test_data = bytearray(
+        [
+            0x64,
+            0x00,
+            0x00,  # 100W power
+            0xE8,
+            0x03,
+            0x00,  # 1000mA current
+            0xE6,
+            0x00,  # 230V voltage
+        ]
+    )
+
     # Configure mock to track calls
     clamp_bus_a = zemismart_power_measurement.endpoint.device.clamp_bus["power"]["a"]
-    
+
     # Call the method
     zemismart_power_measurement.vcp_reported(test_data, 0)
-    
+
     # Verify the calls
     expected_calls = [
         ("power_reported", 100),
         ("voltage_reported", 230),
-        ("current_reported", 1000)
+        ("current_reported", 1000),
     ]
-    
+
     for event, value in expected_calls:
         clamp_bus_a.listener_event.assert_any_call(event, value)
-    
+
     assert clamp_bus_a.listener_event.call_count == 3
+
 
 async def test_zemismart_vcp_invalid_phase(zemismart_power_measurement):
     """Test invalid phase handling for Zemismart VCP reporting."""
     test_data = bytearray([0] * 8)
-    
+
     with pytest.raises(ValueError) as exc_info:
         zemismart_power_measurement.vcp_reported(test_data, 3)
-    
+
     assert "Invalid phase. Phase must be 0, 1, or 2." in str(exc_info.value)
+
 
 async def test_power_measurement_classes():
     """Test PowerA, PowerB, and PowerC measurement classes."""
@@ -177,12 +177,17 @@ async def test_power_measurement_classes():
         device = MagicMock()
         endpoint = MagicMock()
         endpoint.device = device
-        device.clamp_bus = {"power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}}
-        
+        device.clamp_bus = {
+            "power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}
+        }
+
         cluster = power_class(endpoint)
         assert cluster.endpoint == endpoint
-        
-        device.clamp_bus["power"][phase_key].add_listener.assert_called_once_with(cluster)
+
+        device.clamp_bus["power"][phase_key].add_listener.assert_called_once_with(
+            cluster
+        )
+
 
 async def test_device_initialization():
     """Test device initialization and bus setup."""
@@ -191,20 +196,21 @@ async def test_device_initialization():
     ieee = MagicMock()
     nwk = MagicMock()
     replaces = MagicMock()
-    
+
     device = TuyaPowerMeter(application, ieee, nwk, replaces)
-    
+
     # Verify bus initialization
-    assert hasattr(device, 'switch_bus')
+    assert hasattr(device, "switch_bus")
     assert isinstance(device.switch_bus, Bus)
-    
-    assert hasattr(device, 'clamp_bus')
-    assert 'power' in device.clamp_bus
-    assert 'energy' in device.clamp_bus
-    
-    for bus_type in ['power', 'energy']:
-        for phase in ['abc', 'a', 'b', 'c']:
+
+    assert hasattr(device, "clamp_bus")
+    assert "power" in device.clamp_bus
+    assert "energy" in device.clamp_bus
+
+    for bus_type in ["power", "energy"]:
+        for phase in ["abc", "a", "b", "c"]:
             assert isinstance(device.clamp_bus[bus_type][phase], Bus)
+
 
 if __name__ == "__main__":
     pytest.main(["-v"])
