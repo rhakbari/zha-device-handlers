@@ -1,33 +1,20 @@
 """Test for Tuya din power meter."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
-from zigpy.zcl import foundation
-from zigpy.zcl.clusters.homeautomation import ElectricalMeasurement
-from zigpy.zcl.clusters.smartenergy import Metering
 
 from zhaquirks import Bus
-from zhaquirks.const import (
-    DEVICE_TYPE,
-    ENDPOINTS,
-    INPUT_CLUSTERS,
-    MODELS_INFO,
-    OUTPUT_CLUSTERS,
-    PROFILE_ID,
-)
-from zhaquirks.tuya import TuyaManufClusterAttributes, TuyaSwitch
 from zhaquirks.tuya.tuya_din_power import (
-    TuyaPowerMeter,
-    TuyaManufClusterDinPower,
-    TuyaPowerMeasurement,
-    TuyaElectricalMeasurement,
     HikingManufClusterDinPower,
-    ZemismartManufCluster,
-    ZemismartPowerMeasurement,
     PowerA,
     PowerB,
     PowerC,
+    TuyaManufClusterDinPower,
+    TuyaPowerMeter,
+    ZemismartManufCluster,
 )
+
 
 @pytest.fixture
 def tuya_cluster():
@@ -38,6 +25,7 @@ def tuya_cluster():
     cluster = TuyaManufClusterDinPower(entity)
     return cluster
 
+
 @pytest.fixture
 def hiking_cluster():
     """Hiking cluster fixture."""
@@ -47,6 +35,7 @@ def hiking_cluster():
     cluster = HikingManufClusterDinPower(entity)
     return cluster
 
+
 @pytest.fixture
 def zemismart_cluster():
     """Zemismart cluster fixture."""
@@ -55,6 +44,7 @@ def zemismart_cluster():
     entity.endpoint.device.model = "TS0601"
     cluster = ZemismartManufCluster(entity)
     return cluster
+
 
 @pytest.mark.parametrize(
     "cluster_type, dp_id, dp_value, expected_calls",
@@ -96,7 +86,8 @@ async def test_tuya_receive_attribute(
         method_name, value = call
         if method_name == "energy_deliver_reported":
             assert (
-                cluster.endpoint.smartenergy_metering.energy_deliver_reported.call_count == 1
+                cluster.endpoint.smartenergy_metering.energy_deliver_reported.call_count
+                == 1
             )
             cluster.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_with(
                 value
@@ -105,6 +96,7 @@ async def test_tuya_receive_attribute(
             method = getattr(cluster.endpoint.electrical_measurement, method_name)
             assert method.call_count == 1
             method.assert_called_with(value)
+
 
 @pytest.mark.parametrize(
     "cluster_type, dp_id, dp_value, expected_calls",
@@ -138,37 +130,53 @@ async def test_hiking_receive_attribute(
                 call[1]
             )
 
+
 async def test_hiking_voltage_current(hiking_cluster):
     """Test voltage and current combined attribute for Hiking devices."""
     value = (1000 << 16) | 2300  # 1A current, 230V voltage
     hiking_cluster._update_attribute(0x0006, value)
-    
-    hiking_cluster.endpoint.electrical_measurement.current_reported.assert_called_with(1000)
-    hiking_cluster.endpoint.electrical_measurement.voltage_reported.assert_called_with(230)
+
+    hiking_cluster.endpoint.electrical_measurement.current_reported.assert_called_with(
+        1000
+    )
+    hiking_cluster.endpoint.electrical_measurement.voltage_reported.assert_called_with(
+        230
+    )
+
 
 async def test_zemismart_vcp_reporting(zemismart_cluster):
     """Test VCP (Voltage, Current, Power) reporting for Zemismart devices."""
-    test_data = bytearray([
-        0x64, 0x00, 0x00,  # 100W power
-        0xE8, 0x03, 0x00,  # 1000mA current
-        0xE6, 0x00        # 230V voltage
-    ])
-    
+    test_data = bytearray(
+        [
+            0x64,
+            0x00,
+            0x00,  # 100W power
+            0xE8,
+            0x03,
+            0x00,  # 1000mA current
+            0xE6,
+            0x00,  # 230V voltage
+        ]
+    )
+
     zemismart_cluster.endpoint.electrical_measurement.vcp_reported(test_data, 0)
-    
-    calls = zemismart_cluster.endpoint.device.clamp_bus["power"]["a"].listener_event.call_args_list
+
+    calls = zemismart_cluster.endpoint.device.clamp_bus["power"][
+        "a"
+    ].listener_event.call_args_list
     assert len(calls) == 3
-    
+
     expected_calls = [
         ("power_reported", 100),
         ("current_reported", 1000),
         ("voltage_reported", 230),
     ]
-    
+
     for call, expected in zip(calls, expected_calls):
         args = call[0]
         assert args[0] == expected[0]
         assert args[1] == expected[1]
+
 
 async def test_zemismart_invalid_phase(zemismart_cluster):
     """Test invalid phase handling for Zemismart devices."""
@@ -176,34 +184,39 @@ async def test_zemismart_invalid_phase(zemismart_cluster):
     with pytest.raises(ValueError, match="Invalid phase"):
         zemismart_cluster.endpoint.electrical_measurement.vcp_reported(test_data, 3)
 
+
 async def test_power_measurement_classes():
     """Test PowerA, PowerB, and PowerC measurement classes."""
     for power_class in [PowerA, PowerB, PowerC]:
         device = MagicMock()
         endpoint = MagicMock()
         endpoint.device = device
-        device.clamp_bus = {"power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}}
-        
+        device.clamp_bus = {
+            "power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}
+        }
+
         cluster = power_class(endpoint)
         assert cluster.endpoint == endpoint
-        
+
         phase = "a" if power_class == PowerA else "b" if power_class == PowerB else "c"
         device.clamp_bus["power"][phase].add_listener.assert_called_once_with(cluster)
+
 
 async def test_device_initialization():
     """Test device initialization and bus setup."""
     device = TuyaPowerMeter(None, None, None)
-    
-    assert hasattr(device, 'switch_bus')
+
+    assert hasattr(device, "switch_bus")
     assert isinstance(device.switch_bus, Bus)
-    
-    assert hasattr(device, 'clamp_bus')
-    assert 'power' in device.clamp_bus
-    assert 'energy' in device.clamp_bus
-    
-    for bus_type in ['power', 'energy']:
-        for phase in ['abc', 'a', 'b', 'c']:
+
+    assert hasattr(device, "clamp_bus")
+    assert "power" in device.clamp_bus
+    assert "energy" in device.clamp_bus
+
+    for bus_type in ["power", "energy"]:
+        for phase in ["abc", "a", "b", "c"]:
             assert isinstance(device.clamp_bus[bus_type][phase], Bus)
+
 
 if __name__ == "__main__":
     pytest.main(["-v"])
