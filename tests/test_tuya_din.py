@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from zhaquirks import Bus
-from zhaquirks.tuya.tuya_din_power import (
+from zhaquirks.tuya.ts0601_din_power import (
     HikingManufClusterDinPower,
     PowerA,
     PowerB,
