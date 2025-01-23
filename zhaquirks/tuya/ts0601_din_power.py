@@ -315,66 +315,6 @@ class PowerA(PowerMeasurement_2Clamp):
         """Initialize the PowerA class and add a listener to the power clamp bus."""
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["a"].add_listener(self)
-
-<<<<<<< HEAD
-    def ac_frequency_reported(self, value):
-        """Handle reported AC frequency.
-
-        Args:
-            value (float): The reported AC frequency value.
-
-        """
-        self._update_attribute(
-            ElectricalMeasurement.AttributeDefs.ac_frequency.id, value
-        )
-
-    def voltage_reported(self, value):
-        """Handle reported voltage.
-
-        Args:
-            value (float): The reported voltage value.
-
-        """
-        self._update_attribute(
-            ElectricalMeasurement.AttributeDefs.rms_voltage.id, value
-        )
-
-    def power_reported(self, value):
-        """Handle reported power.
-
-        Args:
-            value (float): The reported power value.
-
-        """
-        self._update_attribute(
-            ElectricalMeasurement.AttributeDefs.active_power.id, value
-        )
-
-    def power_factor_reported(self, value):
-        """Handle reported power factor.
-
-        Args:
-            value (float): The reported power factor value.
-
-        """
-        self._update_attribute(
-            ElectricalMeasurement.AttributeDefs.power_factor.id, value
-        )
-
-    def current_reported(self, value):
-        """Handle reported current.
-
-        Args:
-            value (float): The reported current value.
-
-        """
-        self._update_attribute(
-            ElectricalMeasurement.AttributeDefs.rms_current.id, value
-        )
-
-
-=======
->>>>>>> 950d1f6 (fixes)
 class PowerB(PowerMeasurement_2Clamp):
     """PowerB class that handles power measurements for phase B.
 
