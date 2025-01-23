@@ -316,6 +316,7 @@ class PowerA(PowerMeasurement_2Clamp):
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["a"].add_listener(self)
 
+<<<<<<< HEAD
     def ac_frequency_reported(self, value):
         """Handle reported AC frequency.
 
@@ -372,6 +373,8 @@ class PowerA(PowerMeasurement_2Clamp):
         )
 
 
+=======
+>>>>>>> 950d1f6 (fixes)
 class PowerB(PowerMeasurement_2Clamp):
     """PowerB class that handles power measurements for phase B.
 
