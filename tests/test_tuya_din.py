@@ -126,14 +126,24 @@ def zemismart_power_measurement():
     }
     return ZemismartPowerMeasurement(endpoint)
 
+
 def test_zemismart_manuf_cluster(zemismart_cluster):
     """Test Zemismart manufacturer specific cluster."""
     zemismart_cluster._update_attribute(0x0202, 5000)  # ZEMISMART_TOTAL_ENERGY_ATTR
-    zemismart_cluster.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_with(5000)
-    zemismart_cluster._update_attribute(0x0201, 3000)  # ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR
-    zemismart_cluster.endpoint.smartenergy_metering.energy_receive_reported.assert_called_with(3000)
-    zemismart_cluster._update_attribute(0x0006, b'\x00\x01\x02\x03\x04\x05\x06\x07')  # ZEMISMART_VCP_ATTR
+    zemismart_cluster.endpoint.smartenergy_metering.energy_deliver_reported.assert_called_with(
+        5000
+    )
+    zemismart_cluster._update_attribute(
+        0x0201, 3000
+    )  # ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR
+    zemismart_cluster.endpoint.smartenergy_metering.energy_receive_reported.assert_called_with(
+        3000
+    )
+    zemismart_cluster._update_attribute(
+        0x0006, b"\x00\x01\x02\x03\x04\x05\x06\x07"
+    )  # ZEMISMART_VCP_ATTR
     zemismart_cluster.endpoint.electrical_measurement.vcp_reported.assert_called()
+
 
 def test_zemismart_power_measurement(zemismart_power_measurement):
     """Test Zemismart power measurement."""
@@ -141,15 +151,19 @@ def test_zemismart_power_measurement(zemismart_power_measurement):
     zemismart_power_measurement.vcp_reported(test_data, 0)
     assert zemismart_power_measurement._update_attribute.call_count == 3
 
+
 def test_power_classes_initialization():
     """Test initialization of PowerA, PowerB, and PowerC classes."""
     for cls, phase in [(PowerA, "a"), (PowerB, "b"), (PowerC, "c")]:
         device = MagicMock()
         endpoint = MagicMock()
         endpoint.device = device
-        device.clamp_bus = {"power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}}
+        device.clamp_bus = {
+            "power": {"a": MagicMock(), "b": MagicMock(), "c": MagicMock()}
+        }
         cluster = cls(endpoint)
         device.clamp_bus["power"][phase].add_listener.assert_called_once()
+
 
 async def test_zemismart_vcp_reporting(zemismart_power_measurement):
     """Test VCP (Voltage, Current, Power) reporting for Zemismart devices."""
@@ -234,6 +248,7 @@ async def test_device_initialization():
     for bus_type in ["power", "energy"]:
         for phase in ["abc", "a", "b", "c"]:
             assert isinstance(device.clamp_bus[bus_type][phase], Bus)
+
 
 if __name__ == "__main__":
     pytest.main(["-v"])
