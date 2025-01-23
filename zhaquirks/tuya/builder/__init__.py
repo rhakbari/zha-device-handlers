@@ -2,6 +2,10 @@
 
 from collections.abc import Callable
 from enum import Enum
+import inspect
+import math
+import pathlib
+from types import FrameType
 from typing import Any, Optional
 
 from zigpy.quirks import _DEVICE_REGISTRY
@@ -18,6 +22,7 @@ from zigpy.zcl.clusters.measurement import (
     PM25,
     CarbonDioxideConcentration,
     FormaldehydeConcentration,
+    IlluminanceMeasurement,
     RelativeHumidity,
     SoilMoisture,
     TemperatureMeasurement,
@@ -115,8 +120,12 @@ class TuyaValveWaterConsumed(Metering, TuyaLocalCluster):
         Metering.AttributeDefs.metering_device_type.id: WATER_METERING,
     }
 
+
+class TuyaValveWaterConsumedNoInstDemand(TuyaValveWaterConsumed):
+    """Tuya Valve Water consumed cluster without instantaneous demand."""
+
     def __init__(self, *args, **kwargs):
-        """Init a TuyaValveWaterConsumed cluster."""
+        """Init a TuyaValveWaterConsumedNoInstDemand cluster."""
         super().__init__(*args, **kwargs)
         self.add_unsupported_attribute(Metering.AttributeDefs.instantaneous_demand.id)
 
@@ -157,6 +166,14 @@ class TuyaAirQualityVOC(TuyaLocalCluster):
         )
 
 
+class TuyaIlluminance(IlluminanceMeasurement, TuyaLocalCluster):
+    """Tuya local illuminance cluster."""
+
+    _CONSTANT_ATTRIBUTES = {
+        IlluminanceMeasurement.AttributeDefs.light_sensor_type.id: IlluminanceMeasurement.LightSensorType.Photodiode
+    }
+
+
 class TuyaQuirkBuilder(QuirkBuilder):
     """Tuya QuirkBuilder."""
 
@@ -171,6 +188,12 @@ class TuyaQuirkBuilder(QuirkBuilder):
         self.tuya_dp_to_attribute: dict[int, DPToAttributeMapping] = {}
         self.new_attributes: set[foundation.ZCLAttributeDef] = set()
         super().__init__(manufacturer, model, registry)
+        # quirk_file will point to the init call above if called from this QuirkBuilder,
+        # so we need to re-set it correctly
+        current_frame: FrameType = inspect.currentframe()
+        caller: FrameType = current_frame.f_back
+        self.quirk_file = pathlib.Path(caller.f_code.co_filename)
+        self.quirk_file_line = caller.f_lineno
 
     def _tuya_battery(
         self,
@@ -217,6 +240,24 @@ class TuyaQuirkBuilder(QuirkBuilder):
         return self._tuya_battery(
             dp_id=dp_id, power_cfg=TuyaPowerConfigurationClusterBattery, scale=scale
         )
+
+    def tuya_illuminance(
+        self,
+        dp_id: int,
+        illuminance_cfg: TuyaLocalCluster = TuyaIlluminance,
+        converter: Optional[Callable[[Any], Any]] = (
+            lambda x: 10000 * math.log10(x) + 1 if x != 0 else 0
+        ),
+    ) -> QuirkBuilder:
+        """Add a Tuya Illuminance Configuration."""
+        self.tuya_dp(
+            dp_id,
+            illuminance_cfg.ep_attribute,
+            IlluminanceMeasurement.AttributeDefs.measured_value.name,
+            converter=converter,
+        )
+        self.adds(illuminance_cfg)
+        return self
 
     def tuya_contact(self, dp_id: int):
         """Add a Tuya IAS contact sensor."""
@@ -316,7 +357,7 @@ class TuyaQuirkBuilder(QuirkBuilder):
     def tuya_metering(
         self,
         dp_id: int,
-        metering_cfg: TuyaLocalCluster = TuyaValveWaterConsumed,
+        metering_cfg: TuyaLocalCluster = TuyaValveWaterConsumedNoInstDemand,
         scale: float = 1,
     ) -> QuirkBuilder:
         """Add a Tuya Metering Configuration."""
