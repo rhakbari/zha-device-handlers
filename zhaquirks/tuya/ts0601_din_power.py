@@ -37,9 +37,10 @@ HIKING_POWER_FACTOR_ATTR = 0x026F
 HIKING_TOTAL_REACTIVE_ATTR = 0x026D
 HIKING_REACTIVE_POWER_ATTR = 0x026E
 """Zemismart Power Meter Attributes"""
-ZEMISMART_TOTAL_ENERGY_ATTR = 0x0201
-ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR = 0x0202
+ZEMISMART_TOTAL_ENERGY_ATTR = 0x0202
+ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR = 0x0201
 ZEMISMART_VCP_ATTR = 0x0006
+ZEMISMART_FREQUENCY_ATTR = 0x0265
 ZEMISMART_VCP_P2_ATTR = ZEMISMART_VCP_ATTR + 1
 ZEMISMART_VCP_P3_ATTR = ZEMISMART_VCP_ATTR + 2
 
@@ -188,16 +189,23 @@ class HikingManufClusterDinPower(TuyaManufClusterAttributes):
 class ZemismartManufCluster(TuyaManufClusterAttributes):
     """Manufacturer Specific Cluster of the Zemismart SPM series Power Meter devices."""
 
+    # Define a new constant for frequency attribute (adjust the ID as per your device's documentation)
     attributes = {
         ZEMISMART_TOTAL_ENERGY_ATTR: ("energy", t.uint32_t, True),
         ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR: ("reverse_energy", t.uint32_t, True),
         ZEMISMART_VCP_ATTR: ("vcp_raw", t.data64, True),
         ZEMISMART_VCP_P2_ATTR: ("vcp_p2_raw", t.data64, True),
         ZEMISMART_VCP_P3_ATTR: ("vcp_p3_raw", t.data64, True),
+        ZEMISMART_FREQUENCY_ATTR: (
+            "frequency",
+            t.uint16_t,
+            True,
+        ),  # Add frequency attribute
     }
 
     def _update_attribute(self, attrid, value):
         super()._update_attribute(attrid, value)
+
         if attrid == ZEMISMART_TOTAL_ENERGY_ATTR:
             self.endpoint.smartenergy_metering.energy_deliver_reported(value)
         elif attrid == ZEMISMART_TOTAL_REVERSE_ENERGY_ATTR:
@@ -208,6 +216,8 @@ class ZemismartManufCluster(TuyaManufClusterAttributes):
             self.endpoint.electrical_measurement.vcp_reported(value, 1)
         elif attrid == ZEMISMART_VCP_P3_ATTR:
             self.endpoint.electrical_measurement.vcp_reported(value, 2)
+        elif attrid == ZEMISMART_FREQUENCY_ATTR:  # Handle frequency updates
+            self.endpoint.electrical_measurement.frequency_reported(value)
 
 
 class ZemismartPowerMeasurement(LocalDataCluster, ElectricalMeasurement):
@@ -360,7 +370,6 @@ class PowerA(PowerMeasurement_2Clamp):
         self._update_attribute(
             ElectricalMeasurement.AttributeDefs.rms_current.id, value
         )
-
 
 class PowerB(PowerMeasurement_2Clamp):
     """PowerB class that handles power measurements for phase B.
