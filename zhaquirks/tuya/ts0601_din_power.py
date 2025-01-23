@@ -315,6 +315,8 @@ class PowerA(PowerMeasurement_2Clamp):
         """Initialize the PowerA class and add a listener to the power clamp bus."""
         super().__init__(*args, **kwargs)
         self.endpoint.device.clamp_bus["power"]["a"].add_listener(self)
+
+
 class PowerB(PowerMeasurement_2Clamp):
     """PowerB class that handles power measurements for phase B.
 
