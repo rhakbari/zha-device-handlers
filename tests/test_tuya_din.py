@@ -126,6 +126,7 @@ def zemismart_power_measurement():
     }
     return ZemismartPowerMeasurement(endpoint)
 
+
 async def test_zemismart_vcp_reporting(zemismart_power_measurement):
     """Test VCP (Voltage, Current, Power) reporting for Zemismart devices."""
     test_data = bytearray(
