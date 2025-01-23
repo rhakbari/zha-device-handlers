@@ -371,6 +371,7 @@ class PowerA(PowerMeasurement_2Clamp):
             ElectricalMeasurement.AttributeDefs.rms_current.id, value
         )
 
+
 class PowerB(PowerMeasurement_2Clamp):
     """PowerB class that handles power measurements for phase B.
 
